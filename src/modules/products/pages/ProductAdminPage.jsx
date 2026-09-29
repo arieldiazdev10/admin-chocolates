@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { productService } from "../../../services/productService";
 import { Plus, Edit, Trash2, Package, X, Star } from "lucide-react";
 
@@ -10,7 +10,7 @@ const initialFormState = {
   categoriaID: "",
   urlImagen: "",
   destacado: false,
-  usuarioCreacionID: 1, // Puedes ajustarlo según tu sistema de sesión actual
+  usuarioCreacionID: 1,
   usuarioModificacionID: 1,
 };
 
@@ -46,13 +46,15 @@ export const ProductAdminPage = () => {
     if (product) {
       setCurrentProduct(product);
       setFormData({
-        idCategoria: product.categoriaID,
+        productoID: product.productoId || product.productoID || product.id,
         nombre: product.nombre || "",
         descripcion: product.descripcion || "",
         precio: product.precio || "",
-        imagenUrl: product.urlImagen || "",
-        esDestacado: product.destacado || 0,
-        stock: product.existencias || "",
+        existencias: product.existencias || "",
+        categoriaID: product.categoriaID || "",
+        urlImagen: product.urlImagen || "",
+        destacado: product.destacado || false,
+        usuarioModificacionID: 1,
       });
     } else {
       setCurrentProduct(null);
@@ -77,27 +79,35 @@ export const ProductAdminPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Convertir valores numéricos adecuadamente
       const payload = {
-        ...formData,
+        productoID: formData.productoID,
+        nombre: formData.nombre,
+        descripcion: formData.descripcion,
         precio: parseFloat(formData.precio),
-        stock: parseInt(formData.existencias, 10),
-        idCategoria: parseInt(formData.categoriaID, 10),
+        existencias: parseInt(formData.existencias, 10),
+        categoriaID: parseInt(formData.categoriaID, 10),
+        urlImagen: formData.urlImagen,
+        destacado: Boolean(formData.destacado),
+        usuarioModificacionID: 1,
       };
 
-      if (currentProduct) {
-        // Actualizar (PUT /api/admin/products/{id})
-        await productService.update(currentProduct.productoID, payload);
+      if (currentProduct && formData.productoID) {
+        await productService.update(formData.productoID, payload);
       } else {
-        // Crear (POST /api/admin/products)
+        payload.usuarioCreacionID = 1;
         await productService.create(payload);
       }
 
       handleCloseModal();
       fetchProducts();
     } catch (err) {
-      alert("Hubo un error al guardar el producto.");
-      console.error(err);
+      console.error(
+        "Error detallado del API:",
+        err.response?.data || err.message,
+      );
+      alert(
+        "Hubo un error al guardar el producto. Revisa la consola para más detalles.",
+      );
     }
   };
 
@@ -108,7 +118,7 @@ export const ProductAdminPage = () => {
       )
     ) {
       try {
-        await productService.delete(id); // DELETE /api/admin/products/{id} (Soft Delete)
+        await productService.delete(id);
         setProducts(products.filter((p) => p.productoID !== id));
       } catch (err) {
         alert("No se pudo eliminar el producto.");
