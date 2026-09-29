@@ -1,398 +1,300 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CircleAlert,
+  Package,
+  PackageSearch,
+  Plus,
+  RefreshCw,
+  Search,
+  Star,
+  TriangleAlert,
+  Wallet,
+} from "lucide-react";
 import { productService } from "../../../services/productService";
-import { Plus, Edit, Trash2, Package, X, Star } from "lucide-react";
-
-const initialFormState = {
-  nombre: "",
-  descripcion: "",
-  precio: "",
-  existencias: "",
-  categoriaID: "",
-  urlImagen: "",
-  destacado: false,
-  usuarioCreacionID: 1,
-  usuarioModificacionID: 1,
-};
+import { categoryService } from "../../../services/categoryService";
+import { useToast } from "../../../hooks/useToast";
+import { getApiErrorMessages } from "../../../utils/apiError";
+import { LOW_STOCK_THRESHOLD, formatCurrency } from "../../../utils/format";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { ProductFormModal } from "../components/ProductFormModal";
+import { ProductTable, ProductTableSkeleton } from "../components/ProductTable";
+import { StatCard } from "../components/StatCard";
 
 export const ProductAdminPage = () => {
+  const toast = useToast();
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [formState, setFormState] = useState({ open: false, product: null });
+  const [productToDelete, setProductToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Estados para el Modal (Crear / Editar)
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState(null);
-  const [formData, setFormData] = useState(initialFormState);
+  const loadData = useCallback(async () => {
+    const [productsResult, categoriesResult] = await Promise.allSettled([
+      productService.getAll(),
+      categoryService.getAll(),
+    ]);
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const data = await productService.getAll();
-      setProducts(data);
+    if (productsResult.status === "fulfilled") {
+      setProducts(productsResult.value);
       setError(null);
-    } catch (err) {
-      setError("Error al conectar con la API de productos.");
-      console.error(err);
-    } finally {
-      setLoading(false);
+    } else {
+      setError(
+        getApiErrorMessages(
+          productsResult.reason,
+          "Error al cargar los productos.",
+        )[0],
+      );
     }
-  };
+
+    if (categoriesResult.status === "fulfilled") {
+      setCategories(categoriesResult.value);
+    } else {
+      toast.error("No se pudieron cargar las categorías.");
+    }
+
+    setLoading(false);
+  }, [toast]);
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  const handleOpenModal = (product = null) => {
-    if (product) {
-      setCurrentProduct(product);
-      setFormData({
-        productoID: product.productoId || product.productoID || product.id,
-        nombre: product.nombre || "",
-        descripcion: product.descripcion || "",
-        precio: product.precio || "",
-        existencias: product.existencias || "",
-        categoriaID: product.categoriaID || "",
-        urlImagen: product.urlImagen || "",
-        destacado: product.destacado || false,
-        usuarioModificacionID: 1,
-      });
-    } else {
-      setCurrentProduct(null);
-      setFormData(initialFormState);
-    }
-    setIsModalOpen(true);
+  const handleReload = () => {
+    setLoading(true);
+    loadData();
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setCurrentProduct(null);
+  const categoryMap = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.nombre])),
+    [categories],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return products.filter((product) => {
+      const matchesSearch =
+        !term || (product.nombre ?? "").toLowerCase().includes(term);
+      const matchesCategory =
+        !categoryFilter || product.idCategoria === Number(categoryFilter);
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, search, categoryFilter]);
+
+  const stats = useMemo(
+    () => ({
+      total: products.length,
+      featured: products.filter((product) => product.esDestacado).length,
+      lowStock: products.filter(
+        (product) => (product.stock ?? 0) <= LOW_STOCK_THRESHOLD,
+      ).length,
+      inventoryValue: products.reduce(
+        (sum, product) => sum + (product.precio ?? 0) * (product.stock ?? 0),
+        0,
+      ),
+    }),
+    [products],
+  );
+
+  const openForm = (product = null) => setFormState({ open: true, product });
+  const closeForm = useCallback(
+    () => setFormState({ open: false, product: null }),
+    [],
+  );
+
+  const handleSaved = async (message) => {
+    closeForm();
+    toast.success(message);
+    await loadData();
   };
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
+  const closeDelete = useCallback(() => setProductToDelete(null), []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+
+    setDeleting(true);
     try {
-      const payload = {
-        productoID: formData.productoID,
-        nombre: formData.nombre,
-        descripcion: formData.descripcion,
-        precio: parseFloat(formData.precio),
-        existencias: parseInt(formData.existencias, 10),
-        categoriaID: parseInt(formData.categoriaID, 10),
-        urlImagen: formData.urlImagen,
-        destacado: Boolean(formData.destacado),
-        usuarioModificacionID: 1,
-      };
-
-      if (currentProduct && formData.productoID) {
-        await productService.update(formData.productoID, payload);
-      } else {
-        payload.usuarioCreacionID = 1;
-        await productService.create(payload);
-      }
-
-      handleCloseModal();
-      fetchProducts();
+      await productService.delete(productToDelete.id);
+      setProducts((current) =>
+        current.filter((product) => product.id !== productToDelete.id),
+      );
+      toast.success(`"${productToDelete.nombre}" fue eliminado del catálogo`);
+      setProductToDelete(null);
     } catch (err) {
-      console.error(
-        "Error detallado del API:",
-        err.response?.data || err.message,
+      toast.error(
+        getApiErrorMessages(err, "No se pudo eliminar el producto.")[0],
       );
-      alert(
-        "Hubo un error al guardar el producto. Revisa la consola para más detalles.",
-      );
+      if (err.response?.status === 404) {
+        setProductToDelete(null);
+        await loadData();
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (
-      window.confirm(
-        "¿Estás seguro de realizar el borrado lógico de este producto?",
-      )
-    ) {
-      try {
-        await productService.delete(id);
-        setProducts(products.filter((p) => p.productoID !== id));
-      } catch (err) {
-        alert("No se pudo eliminar el producto.");
-        console.error(err);
-      }
-    }
+  const hasFilters = Boolean(search.trim() || categoryFilter);
+
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("");
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        {/* Encabezado */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Package className="text-amber-700" /> Administración de
-              Chocolates
-            </h1>
-            <p className="text-sm text-gray-500">
-              Gestión de inventario y catálogo activo.
-            </p>
+    <div>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-stone-900">
+            <Package className="text-cacao-700" size={28} />
+            Productos
+          </h1>
+          <p className="mt-1 text-sm text-stone-500">
+            Gestiona el inventario y el catálogo activo de la tienda.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => openForm()}
+          className="btn-primary"
+        >
+          <Plus size={18} /> Nuevo producto
+        </button>
+      </div>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={Package} label="Productos activos" value={stats.total} />
+        <StatCard
+          icon={Star}
+          label="Destacados"
+          value={stats.featured}
+          tone="amber"
+        />
+        <StatCard
+          icon={TriangleAlert}
+          label="Stock bajo o agotado"
+          value={stats.lowStock}
+          tone="rose"
+        />
+        <StatCard
+          icon={Wallet}
+          label="Valor del inventario"
+          value={formatCurrency(stats.inventoryValue)}
+          tone="emerald"
+        />
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-stone-200 p-4 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar producto por nombre..."
+              aria-label="Buscar producto por nombre"
+              className="field-input pl-10"
+            />
           </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
+            aria-label="Filtrar por categoría"
+            className="field-input sm:w-56"
           >
-            <Plus size={18} /> Nuevo Producto
+            <option value="">Todas las categorías</option>
+            {categories.map((category) => (
+              <option key={category.id} value={String(category.id)}>
+                {category.nombre}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleReload}
+            disabled={loading}
+            aria-label="Recargar productos"
+            className="btn-secondary"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            <span className="sm:hidden">Recargar</span>
           </button>
         </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">
-              Cargando productos...
+        {loading ? (
+          <ProductTableSkeleton />
+        ) : error ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+              <CircleAlert size={24} />
+            </span>
+            <p className="text-sm font-medium text-stone-700">{error}</p>
+            <button type="button" onClick={handleReload} className="btn-secondary">
+              <RefreshCw size={16} /> Reintentar
+            </button>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cacao-100 text-cacao-700">
+              <PackageSearch size={24} />
+            </span>
+            <p className="text-sm font-medium text-stone-700">
+              {hasFilters
+                ? "Ningún producto coincide con los filtros aplicados."
+                : "Aún no hay productos activos registrados."}
+            </p>
+            {hasFilters ? (
+              <button type="button" onClick={clearFilters} className="btn-secondary">
+                Limpiar filtros
+              </button>
+            ) : (
+              <button type="button" onClick={() => openForm()} className="btn-primary">
+                <Plus size={16} /> Agregar el primer producto
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <ProductTable
+              products={filteredProducts}
+              categoryMap={categoryMap}
+              onEdit={openForm}
+              onDelete={setProductToDelete}
+            />
+            <div className="border-t border-stone-200 bg-stone-50 px-6 py-3 text-xs text-stone-500">
+              Mostrando {filteredProducts.length} de {products.length} productos
             </div>
-          ) : error ? (
-            <div className="p-8 text-center text-rose-500">{error}</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="py-4 px-6">ID</th>
-                    <th className="py-4 px-6">Nombre</th>
-                    <th className="py-4 px-6">Categoría</th>
-                    <th className="py-4 px-6">Precio</th>
-                    <th className="py-4 px-6">Existencias</th>
-                    <th className="py-4 px-6 text-center">Destacado</th>
-                    <th className="py-4 px-6 text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
-                  {products.map((product) => (
-                    <tr
-                      key={product.id}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="py-4 px-6 font-medium text-gray-900">
-                        #{product.id}
-                      </td>
-                      <td className="py-4 px-6 font-medium text-gray-800 flex items-center gap-3">
-                        {product.imagenUrl && (
-                          <img
-                            src={product.imagenUrl}
-                            alt={product.nombre}
-                            className="w-10 h-10 object-cover rounded-md border"
-                          />
-                        )}
-                        {product.nombre}
-                      </td>
-                      <td className="py-4 px-6">Cat. {product.idCategoria}</td>
-                      <td className="py-4 px-6">
-                        ${product.precio?.toFixed(2)}
-                      </td>
-                      <td className="py-4 px-6">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            (product.stock ?? 0) > 5
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          {product.stock} unids.
-                        </span>
-                      </td>
-
-                      <td className="py-4 px-6 text-center">
-                        {product.esDestacado == 1 ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Star
-                              size={14}
-                              className="fill-amber-500 text-amber-500"
-                            />{" "}
-                            Sí
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
-                            No
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-center flex justify-center gap-3">
-                        <button
-                          onClick={() => handleOpenModal(product)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(product.id)}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {products.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="py-8 text-center text-gray-400"
-                      >
-                        No hay productos activos registrados.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
-      {/* Modal para Crear / Editar */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-800">
-                {currentProduct ? "Editar Producto" : "Nuevo Producto"}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      {formState.open && (
+        <ProductFormModal
+          key={formState.product?.id ?? "new"}
+          product={formState.product}
+          categories={categories}
+          onClose={closeForm}
+          onSaved={handleSaved}
+        />
+      )}
 
-            <form
-              onSubmit={handleSubmit}
-              className="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
-            >
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                  Nombre
-                </label>
-                <input
-                  type="text"
-                  name="nombre"
-                  value={formData.nombre}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                    Precio ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="precio"
-                    value={formData.precio}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                    Existencias
-                  </label>
-                  <input
-                    type="number"
-                    name="existencias"
-                    value={formData.existencias}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                    ID Categoría
-                  </label>
-                  <input
-                    type="number"
-                    name="categoriaID"
-                    value={formData.categoriaID}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                  />
-                </div>
-                <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      name="destacado"
-                      checked={formData.destacado}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-amber-800 rounded focus:ring-amber-700"
-                    />
-                    <span className="text-sm font-semibold text-gray-700">
-                      ¿Producto Destacado?
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                  URL de la Imagen
-                </label>
-                <input
-                  type="text"
-                  name="urlImagen"
-                  value={formData.urlImagen}
-                  onChange={handleInputChange}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                  Descripción
-                </label>
-                <textarea
-                  name="descripcion"
-                  rows="3"
-                  value={formData.descripcion}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700"
-                ></textarea>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-800 text-white rounded-lg hover:bg-amber-900 cursor-pointer"
-                >
-                  Guardar Cambios
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {productToDelete && (
+        <ConfirmDialog
+          title="Eliminar producto"
+          message={`¿Seguro que deseas eliminar "${productToDelete.nombre}"? Dejará de mostrarse en el catálogo activo.`}
+          confirmLabel="Eliminar"
+          loading={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={closeDelete}
+        />
       )}
     </div>
   );

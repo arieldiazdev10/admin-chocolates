@@ -1,19 +1,33 @@
-import React, { useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { useAuth } from "./hooks/useAuth";
+import { AdminLayout } from "./components/layout/AdminLayout";
 import { LoginPage } from "./modules/auth/pages/LoginPage";
 import { ProductAdminPage } from "./modules/products/pages/ProductAdminPage";
 
+const SessionLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-stone-50">
+    <div className="flex items-center gap-3 text-sm font-medium text-stone-500">
+      <LoaderCircle className="animate-spin text-cacao-700" size={22} />
+      Verificando sesión...
+    </div>
+  </div>
+);
+
 function App() {
-  // Estado simple para controlar si está logueado (puedes mejorar esto guardando un flag en localStorage)
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, checkingSession } = useAuth();
+
+  if (checkingSession) {
+    return <SessionLoader />;
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
-    <main>
-      {!isAuthenticated ? (
-        <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />
-      ) : (
-        <ProductAdminPage />
-      )}
-    </main>
+    <AdminLayout>
+      <ProductAdminPage />
+    </AdminLayout>
   );
 }
 
