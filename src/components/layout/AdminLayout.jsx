@@ -1,9 +1,15 @@
 import { useState } from "react";
-import { LoaderCircle, LogOut, Cookie } from "lucide-react";
+import { LoaderCircle, LogOut, Cookie, LayoutDashboard, Package, TicketPercent } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useToast } from "../../hooks/useToast";
 
-export const AdminLayout = ({ children }) => {
+const NAV_ITEMS = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "products", label: "Productos", icon: Package },
+  { id: "promotions", label: "Promociones", icon: TicketPercent },
+];
+
+export const AdminLayout = ({ children, section, onNavigate }) => {
   const { user, logout } = useAuth();
   const toast = useToast();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -62,6 +68,30 @@ export const AdminLayout = ({ children }) => {
           </div>
         </div>
       </header>
+
+            <nav className="border-b border-stone-200 bg-white">
+        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
+          {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+            const active = section === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onNavigate?.(id)}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition ${
+                  active
+                    ? "border-cacao-800 text-cacao-800"
+                    : "border-transparent text-stone-500 hover:text-stone-800"
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
         {children}
