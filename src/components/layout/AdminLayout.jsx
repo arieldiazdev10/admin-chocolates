@@ -1,10 +1,19 @@
 import { useState } from "react";
-import { LoaderCircle, LogOut, Cookie, LayoutDashboard, Package, TicketPercent } from "lucide-react";
+import {
+  LoaderCircle,
+  LogOut,
+  Cookie,
+  LayoutDashboard,
+  Package,
+  ShoppingBag,
+  TicketPercent,
+} from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useToast } from "../../hooks/useToast";
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "products", label: "Productos", icon: Package },
   { id: "promotions", label: "Promociones", icon: TicketPercent },
 ];
@@ -36,7 +45,9 @@ export const AdminLayout = ({ children, section, onNavigate }) => {
               <Cookie size={22} />
             </div>
             <div className="leading-tight">
-              <p className="text-base font-bold tracking-tight">Chocolates SV</p>
+              <p className="text-base font-bold tracking-tight">
+                Chocolates SV
+              </p>
               <p className="hidden text-xs text-cacao-200 sm:block">
                 Panel administrativo
               </p>
@@ -69,7 +80,7 @@ export const AdminLayout = ({ children, section, onNavigate }) => {
         </div>
       </header>
 
-            <nav className="border-b border-stone-200 bg-white">
+      <nav className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = section === id;
