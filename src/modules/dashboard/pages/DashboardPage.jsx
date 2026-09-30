@@ -19,7 +19,7 @@ import { StatCard } from "../../products/components/StatCard";
 const statusColors = {
   Pendiente: "bg-amber-500",
   Confirmado: "bg-sky-500",
-    "En Preparacion": "bg-violet-500",,
+    "En Preparacion": "bg-violet-500",
   Enviado: "bg-cacao-500",
   Entregado: "bg-emerald-500",
   Cancelado: "bg-rose-400",
