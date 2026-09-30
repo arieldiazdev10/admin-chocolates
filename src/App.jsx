@@ -6,6 +6,7 @@ import { LoginPage } from "./modules/auth/pages/LoginPage";
 import { ProductAdminPage } from "./modules/products/pages/ProductAdminPage";
 import { DashboardPage } from "./modules/dashboard/pages/DashboardPage";
 import { PromotionAdminPage } from "./modules/promotions/pages/PromotionAdminPage";
+import { OrderAdminPage } from "./modules/orders/pages/OrderAdminPage";
 
 const SessionLoader = () => (
   <div className="flex min-h-screen items-center justify-center bg-stone-50">
@@ -32,6 +33,7 @@ function App() {
     <AdminLayout section={section} onNavigate={setSection}>
       {section === "dashboard" && <DashboardPage />}
       {section === "products" && <ProductAdminPage />}
+      {section === "orders" && <OrderAdminPage />}
       {section === "promotions" && <PromotionAdminPage />}
     </AdminLayout>
   );
